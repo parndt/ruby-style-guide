@@ -1,73 +1,24 @@
-# Prelude
+# BikeExchange Ruby Style Guide
 
-> Style is what separates the good from the great. <br/>
-> -- Bozhidar Batsov
+Following this guide should make our code:
 
-One thing has always bothered me as Ruby developer - Python developers
-have a great programming style reference
-([PEP-8](http://www.python.org/dev/peps/pep-0008/)) and we never got
-an official guide, documenting Ruby coding style and best
-practices. And I do believe that style matters. I also believe that
-such fine fellows, like us Ruby developers, should be quite capable to
-produce this coveted document.
+ * be more consistent, and therefore predictable
+ * easier to understand, and therefore easier to maintain
+ * avoid common pitfalls, and therefore have less bugs
 
-This guide started its life as our internal company Ruby coding guidelines
-(written by yours truly). At some point I decided that the work I was
-doing might be interesting to members of the Ruby community in general
-and that the world had little need for another internal company
-guideline. But the world could certainly benefit from a
-community-driven and community-sanctioned set of practices, idioms and
-style prescriptions for Ruby programming.
+The recommendations in this guide can be ignored if they contravene the above.
 
-Since the inception of the guide I've received a lot of feedback from
-members of the exceptional Ruby community around the world. Thanks for
-all the suggestions and the support! Together we can make a resource
-beneficial to each and every Ruby developer out there.
+This guide was forked from [bbatsov's Ruby Style Guide](https://github.com/bbatsov/ruby-style-guide),
+which GitHub's internal style guide is based on. Some sections & rules not relevant to coding
+at BikeExchange (eg, the more advanced metaprogramming stuff) have been removed,
+along with the original preface.
 
-By the way, if you're into Rails you might want to check out the
-complementary
-[Ruby on Rails 3 Style Guide](https://github.com/bbatsov/rails-style-guide).
-
-# The Ruby Style Guide
-
-This Ruby style guide recommends best practices so that real-world Ruby
-programmers can write code that can be maintained by other real-world Ruby
-programmers. A style guide that reflects real-world usage gets used, and a
-style guide that holds to an ideal that has been rejected by the people it is
-supposed to help risks not getting used at all &ndash; no matter how good it is.
-
-The guide is separated into several sections of related rules. I've
-tried to add the rationale behind the rules (if it's omitted I've
-assumed that is pretty obvious).
-
-I didn't come up with all the rules out of nowhere - they are mostly
-based on my extensive career as a professional software engineer,
-feedback and suggestions from members of the Ruby community and
-various highly regarded Ruby programming resources, such as
-["Programming Ruby 1.9"](http://pragprog.com/book/ruby4/programming-ruby-1-9-2-0)
-and ["The Ruby Programming Language"](http://www.amazon.com/Ruby-Programming-Language-David-Flanagan/dp/0596516177).
-
-The guide is still a work in progress - some rules are lacking
-examples, some rules don't have examples that illustrate them clearly
-enough. In due time these issues will be addressed - just keep them in
-mind for now.
-
-You can generate a PDF or an HTML copy of this guide using
-[Transmuter](https://github.com/TechnoGate/transmuter).
-
-The [rubocop](https://github.com/bbatsov/rubocop) project aims to
-provide an automated way to check whether a Ruby code base complies
-with the style guide. Currently it's far from being production ready and it's missing
-lots of features. Everyone is naturally invited to help improve it!
-
-Translations of the guide are available in the following languages:
-
-* [Chinese Simplified](https://github.com/JuanitoFatas/ruby-style-guide/blob/master/README-zhCN.md)
-* [Chinese Traditional](https://github.com/JuanitoFatas/ruby-style-guide/blob/master/README-zhTW.md)
-* [French](https://github.com/porecreat/ruby-style-guide/blob/master/README-frFR.md)
+Modifications or additions to these recommendations should be via pull request so that they can be reviewed by other team members first.
 
 ## Table of Contents
 
+* [BikeExchange Specific](#bikeexchange-specific)
+* [BikeExchange Additions](#bikeexchange-additions)
 * [Source Code Layout](#source-code-layout)
 * [Syntax](#syntax)
 * [Naming](#naming)
@@ -79,39 +30,249 @@ Translations of the guide are available in the following languages:
 * [Strings](#strings)
 * [Regular Expressions](#regular-expressions)
 * [Percent Literals](#percent-literals)
-* [Metaprogramming](#metaprogramming)
 * [Misc](#misc)
 
-## Source Code Layout
+## BikeExchange Specific
 
-> Nearly everybody is convinced that every style but their own is
-> ugly and unreadable. Leave out the "but their own" and they're
-> probably right... <br/>
-> -- Jerry Coffin (on indentation)
+* Avoid use of the Rails scaffold generator. If used, prune the unused code before commit.
+* If you add a gem to the Gemfile, add a section for it, add it to an existing section, or otherwise make it clear why it's there. It's important that we're able to know when we can remove or replace gems.
 
-* Use `UTF-8` as the source file encoding.
-* Use two **spaces** per indentation level. No hard tabs.
+### ActiveRecord
 
-    ```Ruby
+* Prefer use of `scope` to class methods. Prefer class methods to `scope` if the resulting SQL ends up bending your brain.
+* ActiveRecord relations (the result of scopes) are preferrable to arrays, as they self-optimize in certain cases. `ActiveRecord::Relation` implements most of the methods in `Enumerable`.
+
+  ``` Ruby
+  def contrived_example list
+    list.count
+  end
+
+  # bad: will need to retrieve every object from the database
+  puts contrived_example(MyModel.where(...).all)
+
+  # good: will generate a "SELECT COUNT(*)" query
+  puts contrived_example(MyModel.where(...))
+  ```
+
+* Prefer use of hash variables to strings in `where()` blocks where possible.
+
+    ``` Ruby
+    # bad
+    Foo.where("foos.bar = ?", bar)
+    Foo.joins(:baz).where("baz.quux = ?", bar)
+
     # good
-    def some_method
-      do_something
+    Foo.where(bar: bar)
+    Foo.joins(:baz).where(baz: { quux: bar})
+
+* If `where()` strings are necessary, ensure that the table name is included. This prevents joins from breaking.
+
+    ``` Ruby
+    # bad
+    Foo.where("bar != ?", bar)
+
+    # good
+    Foo.where("foos.bar != ?", bar)
+    ```
+
+* SQL keywords in strings should be in ALL_CAPS, eg `"WHERE foos.foo = 'bar' AND foos.baz != 'quuz'"`
+* Writing validations that reference other models is discouraged: if the other model changes, then your model becomes silently invalid.
+* ActiveRecord models have an instance variable hash called `@attributes_cache`. If caching something related to attributes or relationships, put it there: it'll get cleaned when `reload` is called on your model.
+
+### Tests
+
+* Integration tests go in `spec/features` and use Capybara.
+* Use Cucumber if integration testing procedural & complicated business logic (but only if it's more comfortable for you).
+* Controller tests should not be integration tests.
+* Controller tests on 'thin' controllers are discouraged. However, where fat controllers exist, testing them is encouraged.
+* Don't write view tests. Ain't nobody got time for that.
+* Don't write tests for 'obvious' behaviour: eg attributes, built-in Rails validations, simple associations & scopes. If the test looks like the code that it's testing, it's probably an obvious test.
+* Do write tests for complicated scopes.
+* `it` block descriptors should describe why the behaviour is expected, not just the expected behaviour.
+
+    ``` Ruby
+    # bad: we know it returns true: we can see that in the test
+    it "should return true" do
+      # complicated precondition
+      foo.should be_true
     end
 
-    # bad - four spaces
-    def some_method
-        do_something
+    # good
+    it "should be true when the moon is in phase" # ...
+    ```
+
+* Use `context` if preconditions end up being repeated. Sometimes `it` descriptors can then be omitted entirely. Note the use of the `subject` keyword and RSpec's implied subject magic below.
+
+    ``` Ruby
+    context "when the moon is in phase" do
+      before { complicated_precondition }
+      subject { foo }
+      it { should be_true }
+    end
+
+* Non-integration spec files should map directly back to files in `app` and `lib`. Guard can then use this to automatically run tests only for that file when those files are changed.
+* FactoryGirl factories with fixed literals that are referenced in tests (especially factories that cannot be created twice) are considered fixtures, not factories, and should have `_fixture` added to their name.
+* The literals in factories should not be referenced in tests. Specify the value when instantiating the factory or use a fixture instead. Changing a literal in a factory to a value that is still valid for that model should not break tests.
+* Prefer `Model.new` over `FactoryGirl.build(:model)` over `FactoryGirl.create(:model)`
+* Use of `before(:all)` is asking for trouble.
+
+## BikeExchange Additions
+
+These rules are additions or modifications to rules in the original Ruby Style Guide document.
+
+### Source Code Layout
+
+* Set your editor to remove whitespace at the end of lines automatically.
+
+* Indent the parameters of a method call once if they span more than one line. The closing `)` should be on its own line, indented at the original level of the call.
+
+    ```Ruby
+    # starting point (line is too long)
+    def send_mail(source)
+      Mailer.deliver(to: 'bob@example.com', from: 'us@example.com', subject: 'Important message', body: source.text)
+    end
+
+    # good (normal indent)
+    def send_mail(source)
+      Mailer.deliver(
+        to: 'bob@example.com',
+        from: 'us@example.com',
+        subject: 'Important message',
+        body: source.text
+      )
+    end
+
+    # bad (normal indent, closing bracket on same line)
+    def send_mail(source)
+      Mailer.deliver(
+        to: 'bob@example.com',
+        from: 'us@example.com',
+        subject: 'Important message',
+        body: source.text)
+    end
+
+
+    # bad (double indent)
+    def send_mail(source)
+      Mailer.deliver(
+          to: 'bob@example.com',
+          from: 'us@example.com',
+          subject: 'Important message',
+          body: source.text
+      )
+    end
+
+    # bad (aligned with other parameters)
+    def send_mail(source)
+      Mailer.deliver(to: 'bob@example.com',
+                     from: 'us@example.com',
+                     subject: 'Important message',
+                     body: source.text
+                    )
     end
     ```
 
-* Use Unix-style line endings. (*BSD/Solaris/Linux/OSX users are covered by default,
-  Windows users have to be extra careful.)
-    * If you're using Git you might want to add the following
-    configuration setting to protect your project from Windows line
-    endings creeping in:
+* We don't use line length limits, but lines should not be too long. "too long" is entirely at the programmer's discretion.
 
-        $ git config --global core.autocrlf true
+### Syntax
 
+* The names of predicate methods (or boolean attributes) should be such that
+  they make sense when used with RSpec's `be_` and `has_` matchers, which
+  match the bare method name and `have_` methods respectively. This is
+  primarily to preserve tense & format between our booleans. It can be ignored
+  if the `be_` and `has_` variants make no sense.
+
+    ```Ruby
+    # bad (nonsensical tests)
+    def is_online? { ... }
+    def contains_images? { ... }
+    foo.should be_is_online
+    foo.should be_contains_images
+
+    # good
+    def online? { ... }
+    def has_images? { ... }
+    foo.should be_online
+    foo.should have_images
+    ```
+
+* Model attributes and getter methods should be nouns, setters and
+  methods that modify state should contain verbs.
+
+  ```Ruby
+
+  # bad: 'show' and 'get' are verbs
+  class Person
+    def get_full_name { names.join(' ') }
+    attr_accessor :hide_age
+  end
+
+  # good
+  class Person
+    def full_name { names.join(' ' ) }
+    attr_accessor :has_hidden_age
+  end
+
+* Model methods which call ActiveRecord bang methods should
+  include a bang in their method name. This overrides the rules below
+  regarding bang methods requiring a non-bang variant.
+
+    ```Ruby
+    # bad (calls update_attributes!)
+    def mark_as_paid
+      update_attributes!(:status => 'paid')
+    end
+
+    # good
+    def recalculate_online!
+      update_online
+      save! if changed?
+    end
+
+* If an instance method does not retrieve or modify the instance's state,
+  or otherwise refer to anything specific to that instance, consider making
+  it a class method instead.
+
+### Comments
+
+* If knowingly contributing to our technical debt load, add a
+  comment prefaced with `TODO`. Optionally add your name and a date to save us
+  a `git blame`.
+
+* Do not commit commented out code, unless it's part of a
+  'work in progress' branch. If removing code that will be used later, tag
+  the removal commit instead and push the tag upstream. Apart from keeping
+  our codebase clean, this improves our ability to find where methods & classes
+  are used in our code.
+
+### Exceptions
+
+* Don't work around the "don't suppress exceptions" rule (in the other Exceptions section) with logging.
+
+    ```Ruby
+    # bad - it's not going to be read. really.
+    begin
+      # derp
+    rescue
+      Rails.logger.error "bad things!"
+    end
+
+* If avoiding the "don't suppress exceptions" rules, don't discard the exception information.
+
+    ```Ruby
+    # slightly less bad
+    begin
+      # depr
+    rescue => e
+      Rails.logger.error "bad things: #{e}"
+    end
+    ```
+
+## Source Code Layout
+
+* Use `UTF-8` as the source file encoding.
+* Use two **spaces** per indentation level. No hard tabs.
+* Use Unix-style line endings
 * Use spaces around operators, after commas, colons and semicolons, around `{`
   and before `}`. Whitespace might be (mostly) irrelevant to the Ruby
   interpreter, but its proper use is the key to writing easily
@@ -184,41 +345,6 @@ Translations of the guide are available in the following languages:
     end
     ```
 
-* Align the parameters of a method call if they span more than one line.
-
-    ```Ruby
-    # starting point (line is too long)
-    def send_mail(source)
-      Mailer.deliver(to: 'bob@example.com', from: 'us@example.com', subject: 'Important message', body: source.text)
-    end
-
-    # bad (normal indent)
-    def send_mail(source)
-      Mailer.deliver(
-        to: 'bob@example.com',
-        from: 'us@example.com',
-        subject: 'Important message',
-        body: source.text)
-    end
-
-    # bad (double indent)
-    def send_mail(source)
-      Mailer.deliver(
-          to: 'bob@example.com',
-          from: 'us@example.com',
-          subject: 'Important message',
-          body: source.text)
-    end
-
-    # good
-    def send_mail(source)
-      Mailer.deliver(to: 'bob@example.com',
-                     from: 'us@example.com',
-                     subject: 'Important message',
-                     body: source.text)
-    end
-    ```
-
 * Add underscores to large numeric literals to improve their readability.
 
     ```Ruby
@@ -228,11 +354,6 @@ Translations of the guide are available in the following languages:
     # good - much easier to parse for the human brain
     num = 1_000_000
     ```
-
-* Use RDoc and its conventions for API documentation.  Don't put an
-  empty line between the comment block and the `def`.
-* Limit lines to 80 characters.
-* Avoid trailing whitespace.
 
 ## Syntax
 
@@ -308,21 +429,7 @@ Translations of the guide are available in the following languages:
     end
     ```
 
-* Never use `if x: ...` - as of Ruby 1.9 it has been removed. Use
-  the ternary operator instead.
-
-    ```Ruby
-    # bad
-    result = if some_condition: something else something_else end
-
-    # good
-    result = some_condition ? something : something_else
-    ```
-
 * Never use `if x; ...`. Use the ternary operator instead.
-
-* Use `when x then ...` for one-line cases. The alternative syntax
-  `when x: ...` has been removed as of Ruby 1.9.
 
 * Never use `when x; ...`. See the previous rule.
 
@@ -746,6 +853,7 @@ you if you forget either of the rules above!
 * The names of predicate methods (methods that return a boolean value)
   should end in a question mark.
   (i.e. `Array#empty?`).
+
 * The names of potentially *dangerous* methods (i.e. methods that
   modify `self` or the arguments, `exit!` (doesn't run the finalizers
   like `exit` does), etc.) should end with an exclamation mark if
@@ -770,27 +878,6 @@ you if you forget either of the rules above!
       end
 
       def update
-      end
-    end
-    ```
-
-* Define the non-bang (safe) method in terms of the bang (dangerous)
-  one if possible.
-
-    ```Ruby
-    class Array
-      def flatten_once!
-        res = []
-
-        each do |e|
-          [*e].each { |f| res << f }
-        end
-
-        replace(res)
-      end
-
-      def flatten_once
-        dup.flatten_once!
       end
     end
     ```
@@ -834,8 +921,6 @@ you if you forget either of the rules above!
 > it even clearer. <br/>
 > -- Steve McConnell
 
-* Write self-documenting code and ignore the rest of this section. Seriously!
-* Write comments in English.
 * Comments longer than a word are capitalized and use punctuation. Use [one
   space](http://en.wikipedia.org/wiki/Sentence_spacing) after periods.
 * Avoid superfluous comments.
@@ -847,52 +932,6 @@ you if you forget either of the rules above!
 
 * Keep existing comments up-to-date. An outdated comment is worse than no comment
 at all.
-
-> Good code is like a good joke - it needs no explanation. <br/>
-> -- Russ Olsen
-
-* Avoid writing comments to explain bad code. Refactor the code to
-  make it self-explanatory. (Do or do not - there is no try. --Yoda)
-
-### Comment Annotations
-
-* Annotations should usually be written on the line immediately above
-  the relevant code.
-* The annotation keyword is followed by a colon and a space, then a note
-  describing the problem.
-* If multiple lines are required to describe the problem, subsequent
-  lines should be indented two spaces after the `#`.
-
-    ```Ruby
-    def bar
-      # FIXME: This has crashed occasionally since v3.2.1. It may
-      #   be related to the BarBazUtil upgrade.
-      baz(:quux)
-    end
-    ```
-
-* In cases where the problem is so obvious that any documentation would
-  be redundant, annotations may be left at the end of the offending line
-  with no note. This usage should be the exception and not the rule.
-
-    ```Ruby
-    def bar
-      sleep 100 # OPTIMIZE
-    end
-    ```
-
-* Use `TODO` to note missing features or functionality that should be
-  added at a later date.
-* Use `FIXME` to note broken code that needs to be fixed.
-* Use `OPTIMIZE` to note slow or inefficient code that may cause
-  performance problems.
-* Use `HACK` to note code smells where questionable coding practices
-  were used and should be refactored away.
-* Use `REVIEW` to note anything that should be looked at to confirm it
-  is working as intended. For example: `REVIEW: Are we sure this is how the
-  client does X currently?`
-* Use other custom annotation keywords if it feels appropriate, but be
-  sure to document them in your project's `README` or similar.
 
 ## Classes
 
@@ -1238,7 +1277,6 @@ in *Ruby* now, not in *Python*.
     do_something rescue nil
     ```
 
-
 * Don't use exceptions for flow of control.
 
     ```Ruby
@@ -1413,24 +1451,6 @@ strings.
     email_with_name = "#{user.name} <#{user.email}>"
     ```
 
-* Consider padding string interpolation code with space. It more clearly sets the
-  code apart from the string.
-
-    ```Ruby
-    "#{ user.last_name }, #{ user.first_name }"
-    ```
-
-* Prefer single-quoted strings when you don't need string interpolation or
-  special symbols such as `\t`, `\n`, `'`, etc.
-
-    ```Ruby
-    # bad
-    name = "Bozhidar"
-
-    # good
-    name = 'Bozhidar'
-    ```
-
 * Don't leave out `{}` around instance and global variables being
   interpolated into a string.
 
@@ -1582,70 +1602,6 @@ strings.
 
 * Prefer `()` as delimiters for all `%` literals.
 
-## Metaprogramming
-
-* Avoid needless metaprogramming.
-
-* Do not mess around in core classes when writing libraries.
-  (Do not monkey-patch them.)
-
-* The block form of `class_eval` is preferable to the string-interpolated form.
-  - when you use the string-interpolated form, always supply `__FILE__` and `__LINE__`, so that your backtraces make sense:
-
-    ```ruby
-    class_eval 'def use_relative_model_naming?; true; end', __FILE__, __LINE__
-    ```
-
-  - `define_method` is preferable to `class_eval{ def ... }`
-
-* When using `class_eval` (or other `eval`) with string interpolation, add a comment block showing its appearance if interpolated (a practice I learned from the Rails code):
-
-    ```ruby
-    # from activesupport/lib/active_support/core_ext/string/output_safety.rb
-    UNSAFE_STRING_METHODS.each do |unsafe_method|
-      if 'String'.respond_to?(unsafe_method)
-        class_eval <<-EOT, __FILE__, __LINE__ + 1
-          def #{unsafe_method}(*args, &block)       # def capitalize(*args, &block)
-            to_str.#{unsafe_method}(*args, &block)  #   to_str.capitalize(*args, &block)
-          end                                       # end
-
-          def #{unsafe_method}!(*args)              # def capitalize!(*args)
-            @dirty = true                           #   @dirty = true
-            super                                   #   super
-          end                                       # end
-        EOT
-      end
-    end
-    ```
-
-* avoid using `method_missing` for metaprogramming. Backtraces become messy; the behavior is not listed in `#methods`; misspelled method calls might silently work (`nukes.launch_state = false`). Consider using delegation, proxy, or `define_method` instead.  If you must, use `method_missing`,
-  - be sure to [also define `respond_to_missing?`](http://blog.marc-andre.ca/2010/11/methodmissing-politely.html)
-  - only catch methods with a well-defined prefix, such as `find_by_*` -- make your code as assertive as possible.
-  - call `super` at the end of your statement
-  - delegate to assertive, non-magical methods:
-
-    ```ruby
-    # bad
-    def method_missing?(meth, *args, &block)
-      if /^find_by_(?<prop>.*)/ =~ meth
-        # ... lots of code to do a find_by
-      else
-        super
-      end
-    end
-
-    # good
-    def method_missing?(meth, *args, &block)
-      if /^find_by_(?<prop>.*)/ =~ meth
-        find_by(prop, *args, &block)
-      else
-        super
-      end
-    end
-
-    # best of all, though, would to define_method as each findable attribute is declared
-    ```
-
 ## Misc
 
 * Write `ruby -w` safe code.
@@ -1679,29 +1635,3 @@ strings.
 * Avoid more than three levels of block nesting.
 * Be consistent. In an ideal world, be consistent with these guidelines.
 * Use common sense.
-
-# Contributing
-
-Nothing written in this guide is set in stone. It's my desire to work
-together with everyone interested in Ruby coding style, so that we could
-ultimately create a resource that will be beneficial to the entire Ruby
-community.
-
-Feel free to open tickets or send pull requests with improvements. Thanks in
-advance for your help!
-
-# License
-
-![Creative Commons License](http://i.creativecommons.org/l/by/3.0/88x31.png)
-This work is licensed under a [Creative Commons Attribution 3.0 Unported License](http://creativecommons.org/licenses/by/3.0/deed.en_US)
-
-# Spread the Word
-
-A community-driven style guide is of little use to a community that
-doesn't know about its existence. Tweet about the guide, share it with
-your friends and colleagues. Every comment, suggestion or opinion we
-get makes the guide just a little bit better. And we want to have the
-best possible guide, don't we?
-
-Cheers,<br/>
-[Bozhidar](https://twitter.com/bbatsov)
