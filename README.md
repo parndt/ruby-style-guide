@@ -42,17 +42,17 @@ Modifications or additions to these recommendations should be via pull request s
 * Prefer use of `scope` to class methods. Prefer class methods to `scope` if the resulting SQL ends up bending your brain.
 * ActiveRecord relations (the result of scopes) are preferrable to arrays, as they self-optimize in certain cases. `ActiveRecord::Relation` implements most of the methods in `Enumerable`.
 
-  ``` Ruby
-  def contrived_example list
-    list.count
-  end
-
-  # bad: will need to retrieve every object from the database
-  puts contrived_example(MyModel.where(...).all)
-
-  # good: will generate a "SELECT COUNT(*)" query
-  puts contrived_example(MyModel.where(...))
-  ```
+   ``` Ruby
+   def contrived_example list
+      list.count
+   end
+   
+   # bad: will need to retrieve every object from the database
+   puts contrived_example(MyModel.where(...).all)
+   
+   # good: will generate a "SELECT COUNT(*)" query
+   puts contrived_example(MyModel.where(...))
+   ```
 
 * Prefer use of hash variables to strings in `where()` blocks where possible.
 
